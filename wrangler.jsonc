@@ -2,6 +2,7 @@
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "prewarmer-local",
   "main": "src/worker.ts",
+  "preview_urls": false,
   "compatibility_date": "2026-10-28",
   "compatibility_flags": ["nodejs_compat"],
   "assets": {
@@ -20,7 +21,11 @@
     "ALLOW_CODEX_CONNECTION": "false",
     "ENABLE_LIVE_RUNS": "false",
   },
-  "observability": { "enabled": true, "head_sampling_rate": 0.1 },
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 0.1,
+    "redact_query_string": true,
+  },
   "env": {
     "vm": {
       "name": "prewarmer-vm",

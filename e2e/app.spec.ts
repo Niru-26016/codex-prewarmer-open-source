@@ -1,6 +1,52 @@
 import { test, expect } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
+import { spawnSync } from 'node:child_process';
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 const password = 'fake-dashboard-password-e2e-only';
+async function verifyConnectionCommands(script) {
+  const folder = await mkdtemp(join(tmpdir(), 'prewarmer-guide-test-'));
+  const bin = join(folder, 'bin');
+  const log = join(folder, 'commands.log');
+  try {
+    await mkdir(bin);
+    for (const command of ['mkdir', 'chmod'])
+      await writeFile(join(bin, command), `#!/bin/sh\nexec /bin/${command} "$@"\n`, {
+        mode: 0o700,
+      });
+    await writeFile(
+      join(bin, 'codex'),
+      '#!/bin/sh\nprintf "codex\\n" >> "$GUIDE_TEST_LOG"\nexit "$GUIDE_TEST_CODEX_EXIT"\n',
+      { mode: 0o700 },
+    );
+    await writeFile(join(bin, 'node'), '#!/bin/sh\nprintf "upload\\n" >> "$GUIDE_TEST_LOG"\n', {
+      mode: 0o700,
+    });
+    const execute = (loginExit = '0') =>
+      spawnSync('/bin/sh', ['-c', script], {
+        cwd: folder,
+        encoding: 'utf8',
+        env: { PATH: bin, GUIDE_TEST_LOG: log, GUIDE_TEST_CODEX_EXIT: loginExit },
+        timeout: 5000,
+      });
+    await writeFile(log, '');
+    const wrongFolder = execute();
+    expect(wrongFolder.status).toBe(1);
+    expect(wrongFolder.stderr).toContain('Wrong folder:');
+    expect(await readFile(log, 'utf8')).toBe('');
+    await mkdir(join(folder, 'scripts'));
+    await writeFile(join(folder, 'scripts/seed-auth.mjs'), '// Synthetic helper path only.\n');
+    const failedLogin = execute('1');
+    expect(failedLogin.status).toBe(1);
+    expect(await readFile(log, 'utf8')).toBe('codex\n');
+    await writeFile(log, '');
+    expect(execute().status).toBe(0);
+    expect(await readFile(log, 'utf8')).toBe('codex\nupload\n');
+  } finally {
+    await rm(folder, { recursive: true, force: true });
+  }
+}
 async function signIn(page) {
   await page.goto('/');
   await page.getByLabel('Dashboard password').fill(password);
@@ -47,6 +93,10 @@ test('complete phone flow: schedule CRUD, mock run, history, reconnect screen an
   });
   await navigate(page, 'Settings');
   await expect(page.getByText(/Connection locked:/)).toBeVisible();
+  await expect(page.getByText(/Browser sign-in alone does not connect this app:/)).toBeVisible();
+  await verifyConnectionCommands(await page.locator('.settings-guide pre code').innerText());
+  if (info.project.name === 'desktop')
+    await expect(page.getByText('Dashboard connected', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Install on your phone' }).click();
   await expect(page.getByText(/On Android, open this app/)).toBeVisible();
   await navigate(page, 'Schedules');

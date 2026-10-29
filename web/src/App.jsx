@@ -625,6 +625,7 @@ function HistoryView({ data, onRefresh }) {
 }
 function SettingsView({ data, onLogout, onDisconnect, onRefresh }) {
   const [disconnecting, setDisconnecting] = useState(false);
+  const workerOrigin = "'" + window.location.origin.replaceAll("'", "'\\''") + "'";
   async function remove() {
     if (
       !confirm('Remove the stored Codex session? Future real warmups will stop until reconnected.')
@@ -714,20 +715,32 @@ function SettingsView({ data, onLogout, onDisconnect, onRefresh }) {
             : ''}
         </p>
         <p>
-          On your trusted Mac or Linux computer, open the project folder in Terminal. Sign in with
-          your ChatGPT account in Brave Personal using a separate Codex session for this app. Never
-          paste <code>auth.json</code> into chat or GitHub.
+          First open your Codex Prewarmer project folder in Terminal. Type <code>cd</code> followed
+          by a space, drag the project folder into Terminal, then press Return. It must be the
+          folder containing <code>package.json</code> and <code>scripts/seed-auth.mjs</code>.
+        </p>
+        <p>
+          Paste the whole block below. It checks the folder before starting sign-in. Use your
+          ChatGPT account in Brave Personal and keep this Codex session separate from other work.
+          Never paste <code>auth.json</code> into chat or GitHub.
         </p>
         <pre>
-          <code>{`mkdir -p .build/codex-connection
-chmod 700 .build/codex-connection
-CODEX_HOME="$PWD/.build/codex-connection" codex -c 'cli_auth_credentials_store="file"' login
-node scripts/seed-auth.mjs ${window.location.origin} .build/codex-connection/auth.json --allow-credential-upload`}</code>
+          <code>{`(
+  if [ ! -f scripts/seed-auth.mjs ]; then
+    printf '%s\\n' 'Wrong folder: open your Codex Prewarmer project folder in Terminal, then paste this block again.' >&2
+    exit 1
+  fi
+  mkdir -p .build/codex-connection &&
+  chmod 700 .build/codex-connection &&
+  CODEX_HOME="$PWD/.build/codex-connection" codex -c 'cli_auth_credentials_store="file"' login &&
+  node scripts/seed-auth.mjs ${workerOrigin} .build/codex-connection/auth.json --allow-credential-upload
+)`}</code>
         </pre>
         <p>
-          Enter your Prewarmer dashboard password when prompted. Then select Check status below.
-          Connecting stores your encrypted session; real requests stay disabled while execution mode
-          is DRY RUN. Do not use this separate session for other Codex work.
+          After browser sign-in succeeds, return to Terminal and enter your Prewarmer dashboard
+          password when prompted. Browser sign-in alone does not connect this app: wait for Terminal
+          to confirm the authentication upload, then select Check status below. Connecting stores
+          your encrypted session; real requests stay disabled while execution mode is DRY RUN.
         </p>
         <a href="https://learn.chatgpt.com/docs/auth/ci-cd-auth" target="_blank" rel="noreferrer">
           Open official Codex CI authentication guidance <ExternalLink size={14} />
@@ -943,7 +956,7 @@ export default function App() {
         <div className="sidebar-bottom">
           <div className="side-detail">
             <span className={`connection-pip ${online ? '' : 'offline'}`} />
-            {online ? 'All systems connected' : 'Connection lost'}
+            {online ? 'Dashboard connected' : 'Connection lost'}
           </div>
           <div className="side-user">
             <div className="avatar">P</div>
