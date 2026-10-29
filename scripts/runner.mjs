@@ -9,14 +9,19 @@ import { readLimits } from './limits.mjs';
 import { readJson } from '../src/security.js';
 
 export function classifyFailure(text) {
+  // A final quota rejection may follow a successful refresh after an earlier 401.
+  if (
+    /usage[_ -]limit|rate[_ -]?limit|quota[_ -](?:exceeded|exhausted)|insufficient_quota|\b429\b/i.test(
+      text,
+    )
+  )
+    return { ok: false, reconnect: false, error: 'RATE_LIMITED' };
   if (
     /refresh_token_reused|invalid_grant|refresh token.*(?:expired|revoked)|authentication required|please (?:log|sign) in|401 Unauthorized/i.test(
       text,
     )
   )
     return { ok: false, reconnect: true, error: 'CODEX_RECONNECT_REQUIRED' };
-  if (/usage limit|rate.?limit|quota exceeded|429/i.test(text))
-    return { ok: false, reconnect: false, error: 'RATE_LIMITED' };
   return { ok: false, reconnect: false, error: 'EXECUTION_FAILED' };
 }
 export async function runCodex(home) {

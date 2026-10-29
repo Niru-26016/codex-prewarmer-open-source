@@ -19,7 +19,18 @@ test('quota snapshots retain only valid public window fields', () => {
   assert.deepEqual(sanitizeLimits({ rateLimits: { primary: { ...w, usedPercent: 101 } } }), []);
 });
 test('rate, network and timeout errors do not masquerade as expired auth', () => {
-  assert.equal(classifyFailure('429 usage limit reached').reconnect, false);
+  for (const message of [
+    '429 usage limit reached',
+    'usage_limit_reached',
+    'rate_limit_exceeded',
+    'Earlier 401 Unauthorized; session refreshed; usage_limit_reached',
+  ]) {
+    assert.deepEqual(classifyFailure(message), {
+      ok: false,
+      reconnect: false,
+      error: 'RATE_LIMITED',
+    });
+  }
   assert.equal(classifyFailure('network connection reset').reconnect, false);
   assert.equal(classifyFailure('refresh_token_reused').reconnect, true);
 });

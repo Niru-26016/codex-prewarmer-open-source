@@ -57,6 +57,9 @@ const messages = {
   NOT_SIGNED_IN: 'Your dashboard session expired. Please sign in again.',
   RUN_ACTIVE: 'Another run is already queued or running.',
   CODEX_CONNECTION_LOCKED: 'Codex connection is locked for this dry-run release.',
+  RATE_LIMITED: 'Codex allowance exhausted. Wait for the reset; reconnecting is not needed.',
+  EXECUTION_FAILED: 'The request failed. This does not by itself mean your login expired.',
+  EXECUTION_TIMEOUT: 'The request timed out. Your login has not been marked expired.',
   INVALID_CODEX_AUTH: 'Use a fresh file-backed ChatGPT Codex session from your trusted computer.',
   INCORRECT_PASSWORD: 'Incorrect password.',
   LOGIN_RATE_LIMITED: 'Too many sign-in attempts. Try again in 15 minutes.',
@@ -605,7 +608,13 @@ function HistoryView({ data, onRefresh }) {
                       ? 'Test run'
                       : 'Real Codex request'}
                 </span>
-                {job.error && <small className="error-text">{job.error}</small>}
+                {job.error && (
+                  <small className="error-text">
+                    {job.error === 'CODEX_RECONNECT_REQUIRED' && data.authReady
+                      ? 'This earlier run reported a login problem. Your account is connected now.'
+                      : messages[job.error] || job.error}
+                  </small>
+                )}
               </div>
               <Badge tone={statuses[job.status]?.[0] || 'neutral'}>
                 {statuses[job.status]?.[1] || job.status}
