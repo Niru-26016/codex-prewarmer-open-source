@@ -1,0 +1,15 @@
+{
+  "node": {
+    "version": "22.23.2",
+    "sha256": "d60acfe00a2932254bb0ad20e01b0d74397a0875595de719654b214f4b03f307",
+    "url": "https://nodejs.org/dist/v22.23.2/node-v22.23.2-linux-x64.tar.xz",
+    "filename": "node-v22.23.2-linux-x64.tar.xz"
+  },
+  "codex": {
+    "version": "0.165.0",
+    "integrity": "sha512-FotDc7bVHwaommtsdDP8PPrH0a5IwC/t8H/LhdEcH4EBqgeYFRCtptiHcuwgvNRCLbTbOyFE/Ur6GzYCljgaSQ==",
+    "sha256": "f997cd6ef5987126e19cd3c82e847a4a6461270f32f97340c5e99a65fb6f9b8a",
+    "url": "https://registry.npmjs.org/@openai/codex/-/codex-0.165.0-linux-x64.tgz",
+    "filename": "openai-codex-0.165.0-linux-x64.tgz"
+  }
+}

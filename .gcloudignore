@@ -1,0 +1,11 @@
+# No cloud build may upload local secrets or the dedicated Codex login.
+**
+!.gcloudignore
+!.dockerignore
+!cloudbuild.yaml
+!runner/
+!runner/Dockerfile
+!scripts/
+!scripts/runner.mjs
+!src/
+!src/security.js

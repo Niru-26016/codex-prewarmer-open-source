@@ -1,0 +1,67 @@
+{
+  "name": "codex-prewarmer",
+  "version": "1.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --config web/vite.config.js",
+    "build": "vite build --config web/vite.config.js && node scripts/build-sw.mjs",
+    "preview": "vite preview --config web/vite.config.js",
+    "local:setup": "node scripts/local-setup.mjs",
+    "start": "npm run build && wrangler dev --local --ip 127.0.0.1 --port 8787",
+    "worker:dev": "npm run start",
+    "deploy:check": "npm run build && wrangler deploy --env staging --dry-run --outdir .build/worker",
+    "types": "wrangler types",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src web/src scripts tests e2e *.ts *.mjs --no-warn-ignored",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test:unit": "node --test tests/*.test.mjs",
+    "test:worker": "vitest run",
+    "test": "npm run test:unit && npm run test:worker",
+    "test:e2e": "playwright test",
+    "check": "npm run format:check && npm run lint && npm run typecheck && npm test && npm run test:infra && npm run build && npm run deploy:check",
+    "deploy:check:production": "npm run build && wrangler deploy --env production --dry-run --outdir .build/production",
+    "deploy:check:vm": "npm run build && wrangler deploy --env vm --dry-run --outdir .build/vm-worker",
+    "test:infra": "python3 -m unittest discover -s tests -p 'test_*.py'"
+  },
+  "dependencies": {
+    "lucide-react": "1.63.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
+    "@cloudflare/vitest-plugin": "1.4.9",
+    "@eslint/js": "9.39.4",
+    "@playwright/test": "1.64.1",
+    "@types/node": "22.19.15",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@typescript-eslint/parser": "8.72.1",
+    "@vitejs/plugin-react": "6.1.2",
+    "eslint": "9.39.4",
+    "eslint-plugin-jsx-a11y": "6.10.2",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "globals": "17.13.0",
+    "prettier": "3.9.10",
+    "typescript": "6.0.2",
+    "vite": "8.3.5",
+    "vitest": "5.0.5",
+    "wrangler": "4.154.0"
+  },
+  "engines": {
+    "node": ">=22.12.0 <23",
+    "npm": ">=10 <11"
+  },
+  "description": "An installable scheduler for controlled Codex CLI requests, with IST alarms and isolated runners.",
+  "license": "MIT",
+  "homepage": "https://github.com/Niru-26016/codex-prewarmer-open-source#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Niru-26016/codex-prewarmer-open-source.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Niru-26016/codex-prewarmer-open-source/issues"
+  }
+}

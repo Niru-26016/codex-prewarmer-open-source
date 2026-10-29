@@ -1,0 +1,62 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "prewarmer-local",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-10-28",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": true,
+  },
+  "durable_objects": { "bindings": [{ "name": "STATE", "class_name": "PrewarmState" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["PrewarmState"] }],
+  "vars": {
+    "APP_ENV": "local",
+    "TIMEZONE": "Asia/Kolkata",
+    "DRY_RUN": "true",
+    "EXECUTOR": "mock",
+    "ALLOW_CODEX_CONNECTION": "false",
+    "ENABLE_LIVE_RUNS": "false",
+  },
+  "observability": { "enabled": true, "head_sampling_rate": 0.1 },
+  "env": {
+    "vm": {
+      "name": "prewarmer-vm",
+      "durable_objects": { "bindings": [{ "name": "STATE", "class_name": "PrewarmState" }] },
+      "vars": {
+        "APP_ENV": "production",
+        "TIMEZONE": "Asia/Kolkata",
+        "DRY_RUN": "true",
+        "EXECUTOR": "vm",
+        "ALLOW_CODEX_CONNECTION": "false",
+        "ENABLE_LIVE_RUNS": "false",
+      },
+    },
+    "staging": {
+      "name": "prewarmer-staging",
+      "durable_objects": { "bindings": [{ "name": "STATE", "class_name": "PrewarmState" }] },
+      "vars": {
+        "APP_ENV": "staging",
+        "TIMEZONE": "Asia/Kolkata",
+        "DRY_RUN": "true",
+        "EXECUTOR": "mock",
+        "ALLOW_CODEX_CONNECTION": "false",
+        "ENABLE_LIVE_RUNS": "false",
+      },
+    },
+    "production": {
+      "name": "prewarmer-production",
+      "durable_objects": { "bindings": [{ "name": "STATE", "class_name": "PrewarmState" }] },
+      "vars": {
+        "APP_ENV": "production",
+        "TIMEZONE": "Asia/Kolkata",
+        "DRY_RUN": "true",
+        "EXECUTOR": "cloud_run",
+        "ALLOW_CODEX_CONNECTION": "false",
+        "ENABLE_LIVE_RUNS": "false",
+      },
+    },
+  },
+}

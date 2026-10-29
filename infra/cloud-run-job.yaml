@@ -1,0 +1,32 @@
+# Prepared template only. Replace placeholders and obtain deployment approval first.
+apiVersion: run.googleapis.com/v1
+kind: Job
+metadata:
+  name: codex-prewarmer
+spec:
+  template:
+    spec:
+      taskCount: 1
+      parallelism: 1
+      template:
+        spec:
+          maxRetries: 0
+          timeoutSeconds: '180'
+          serviceAccountName: REPLACE_RUNTIME_SERVICE_ACCOUNT
+          containers:
+            - name: runner
+              image: REPLACE_PRIVATE_IMAGE_WITH_DIGEST
+              resources:
+                limits:
+                  cpu: '1'
+                  memory: 512Mi
+              env:
+                - name: WORKER_URL
+                  value: https://REPLACE_APPROVED_WORKER.example
+                - name: ALLOW_CODEX_EXECUTION
+                  value: 'false'
+                - name: RUNNER_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: REPLACE_RUNNER_TOKEN_SECRET
+                      key: '1'
