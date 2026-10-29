@@ -68,7 +68,7 @@ async function api(path, { method = 'GET', body } = {}) {
   const headers = {};
   if (body) headers['Content-Type'] = 'application/json';
   if (method !== 'GET' && path !== '/login') headers['X-CSRF-Token'] = csrfToken;
-  if (path === '/run') headers['Idempotency-Key'] = crypto.randomUUID();
+  if (['/run', '/usage/refresh'].includes(path)) headers['Idempotency-Key'] = crypto.randomUUID();
   const response = await fetch(`/api${path}`, {
     method,
     headers,
