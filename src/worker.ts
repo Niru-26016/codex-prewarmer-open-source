@@ -77,7 +77,7 @@ export default {
         const data = await readJson(request);
         if (path === '/api/runner/vm-poll') {
           if (typeof data?.allowLive !== 'boolean') throw new AppError('INVALID_RUNNER_REQUEST');
-          return json(await stub.vmPoll(data.allowLive));
+          return json(await stub.vmPoll(data.allowLive, data.supportsUsage === true));
         }
         if (
           !/^[0-9a-f-]{36}$/i.test(data?.jobId) ||
@@ -99,6 +99,8 @@ export default {
               ok: data.ok,
               authJson: data.authJson ?? null,
               reconnect: data.reconnect ?? false,
+              limits: data.limits,
+              error: typeof data.error === 'string' ? data.error : undefined,
             }),
           );
         }
@@ -131,10 +133,15 @@ export default {
         return json({ ok: true }, 200, { 'Set-Cookie': cookie('', local) });
       }
       if (path === '/api/status' && request.method === 'GET') return json(await stub.snapshot());
-      if (path === '/api/run' && request.method === 'POST') {
+      if (['/api/run', '/api/usage/refresh'].includes(path) && request.method === 'POST') {
+        if (path === '/api/usage/refresh' && env.EXECUTOR !== 'vm')
+          throw new AppError('VM_RUNNER_DISABLED', 403);
         const key = request.headers.get('Idempotency-Key');
         if (!key || !/^[0-9a-f-]{36}$/i.test(key)) throw new AppError('IDEMPOTENCY_KEY_REQUIRED');
-        return json(await stub.createJob(key), 202);
+        return json(
+          await (path === '/api/usage/refresh' ? stub.createUsageJob(key) : stub.createJob(key)),
+          202,
+        );
       }
       if (path === '/api/schedules' && request.method === 'POST')
         return json(await stub.saveSchedule(await readJson(request, 4000)), 201);

@@ -487,3 +487,64 @@ it('legacy KV schedules migrate once, preserving history and requiring credentia
   await evictDurableObject(s);
   expect((await s.snapshot()).schedules).toHaveLength(1);
 });
+
+it('usage-only jobs persist sanitized limits and keep credentials ready on quota failures', async () => {
+  const s = object();
+  await mode(s, {
+    EXECUTOR: 'vm',
+    DRY_RUN: 'false',
+    ENABLE_LIVE_RUNS: 'true',
+    ALLOW_CODEX_CONNECTION: 'true',
+  });
+  await s.storeAuth(fakeAuth);
+  const j = (await s.createJob(crypto.randomUUID(), true)).job;
+  await changeJob(s, j.id, { status: 'dispatched' });
+  const claim = await s.claim(j.id, 'c'.repeat(64), true);
+  expect(claim.usageOnly).toBe(true);
+  await s.finish(j.id, 'c'.repeat(64), {
+    ok: true,
+    authJson: fakeAuth,
+    limits: [
+      {
+        id: 'codex',
+        primary: { usedPercent: 25, windowDurationMins: 300, resetsAt: 1900000000 },
+        secret: 'drop',
+      },
+    ],
+  });
+  expect((await s.snapshot()).usage.buckets[0].primary.usedPercent).toBe(25);
+  expect(JSON.stringify((await s.snapshot()).usage)).not.toContain('secret');
+  const next = await dispatched(s);
+  await s.claim(next, 'd'.repeat(64), true);
+  await s.finish(next, 'd'.repeat(64), {
+    ok: false,
+    authJson: fakeAuth,
+    reconnect: false,
+    error: 'RATE_LIMITED',
+  });
+  expect((await s.snapshot()).credentialState).toBe('ready');
+  expect((await s.snapshot()).jobs[0].error).toBe('RATE_LIMITED');
+});
+
+it('HTTP allowance refresh creates an allowance job rather than a warmup', async () => {
+  const s = env.STATE.getByName('personal');
+  await mode(s, {
+    EXECUTOR: 'vm',
+    DRY_RUN: 'false',
+    ENABLE_LIVE_RUNS: 'true',
+    ALLOW_CODEX_CONNECTION: 'true',
+  });
+  await s.storeAuth(fakeAuth);
+  const session = await login();
+  const r = await request('/api/usage/refresh', {
+    method: 'POST',
+    headers: {
+      Cookie: session.cookie,
+      Origin: 'https://app.example',
+      'X-CSRF-Token': session.csrf,
+      'Idempotency-Key': crypto.randomUUID(),
+    },
+  });
+  expect(r.status).toBe(202);
+  expect((await r.json()).job.source).toBe('usage');
+});

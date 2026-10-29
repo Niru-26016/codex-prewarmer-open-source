@@ -69,6 +69,10 @@ flowchart LR
 
 The timer in the dashboard is the next **scheduled request**, not a verified quota-reset timer. Overlapping scheduled jobs are skipped rather than executed in parallel. See [architecture and failure behavior](docs/ARCHITECTURE.md).
 
+## Account allowance
+
+Settings → **Refresh allowance** queues a read-only query through your connected VM. It shows remaining percentages and reset times in IST, with a last-checked timestamp. It creates no model turn and redeems no reset credit. Use the updated VM runner; older runners cannot claim allowance jobs. Quota and network failures no longer automatically mark your login as expired.
+
 ## Self-hosting
 
 The application has two independently operated parts:

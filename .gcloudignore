@@ -7,5 +7,7 @@
 !runner/Dockerfile
 !scripts/
 !scripts/runner.mjs
+!scripts/limits.mjs
 !src/
 !src/security.js
+!src/limits.js

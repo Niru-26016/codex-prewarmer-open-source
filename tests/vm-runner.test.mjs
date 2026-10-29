@@ -16,7 +16,7 @@ test('VM runner discovers an exact job ID and passes it to the bound runner', as
       assert.equal(url, env.WORKER_URL + '/api/runner/vm-poll');
       assert.equal(options.headers.Authorization, 'Bearer ' + env.RUNNER_TOKEN);
       assert.equal(options.redirect, 'error');
-      assert.deepEqual(JSON.parse(options.body), { allowLive: true });
+      assert.deepEqual(JSON.parse(options.body), { allowLive: true, supportsUsage: true });
       return Response.json({ ok: true, jobId });
     },
     runner: async (options) => {

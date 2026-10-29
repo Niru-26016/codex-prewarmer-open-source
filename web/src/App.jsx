@@ -322,7 +322,7 @@ function Dashboard({ data, onRun, onRefresh, now, busy, online, setView }) {
   const next = data.schedules
     .filter((s) => s.enabled && s.nextAt)
     .sort((a, b) => a.nextAt - b.nextAt)[0];
-  const relevantJobs = data.jobs.filter((j) => j.dryRun === data.dryRun);
+  const relevantJobs = data.jobs.filter((j) => j.dryRun === data.dryRun && j.source !== 'usage');
   const succeeded = relevantJobs.filter((j) => j.status === 'succeeded').length;
   const active = data.active && data.jobs.find((j) => j.id === data.active.id);
   const runnerOffline = data.executor === 'vm' && !data.vmRunner?.online;
@@ -590,9 +590,20 @@ function HistoryView({ data, onRefresh }) {
                 <Zap size={18} />
               </div>
               <div className="history-description">
-                <strong>{job.source === 'manual' ? 'Manual warmup' : 'Scheduled warmup'}</strong>
+                <strong>
+                  {job.source === 'usage'
+                    ? 'Allowance check'
+                    : job.source === 'manual'
+                      ? 'Manual warmup'
+                      : 'Scheduled warmup'}
+                </strong>
                 <span>
-                  {format(job.createdAt)} · IST · {job.dryRun ? 'Test run' : 'Real Codex request'}
+                  {format(job.createdAt)} · IST ·{' '}
+                  {job.source === 'usage'
+                    ? 'No model request'
+                    : job.dryRun
+                      ? 'Test run'
+                      : 'Real Codex request'}
                 </span>
                 {job.error && <small className="error-text">{job.error}</small>}
               </div>
@@ -625,6 +636,20 @@ function HistoryView({ data, onRefresh }) {
 }
 function SettingsView({ data, onLogout, onDisconnect, onRefresh }) {
   const [disconnecting, setDisconnecting] = useState(false);
+  const [usageError, setUsageError] = useState('');
+  const [usageBusy, setUsageBusy] = useState(false);
+  async function refreshUsage() {
+    setUsageBusy(true);
+    setUsageError('');
+    try {
+      await api('/usage/refresh', { method: 'POST' });
+      await onRefresh();
+    } catch (e) {
+      setUsageError(e.message);
+    } finally {
+      setUsageBusy(false);
+    }
+  }
   const workerOrigin = "'" + window.location.origin.replaceAll("'", "'\\''") + "'";
   async function remove() {
     if (
@@ -703,6 +728,52 @@ function SettingsView({ data, onLogout, onDisconnect, onRefresh }) {
           </div>
           <Badge tone={data.dryRun ? 'amber' : 'green'}>{data.dryRun ? 'DRY RUN' : 'LIVE'}</Badge>
         </div>
+      </div>
+      <div className="settings-guide">
+        <h3>Codex allowance</h3>
+        <p>Read-only account limits. This does not send a model request or reset your allowance.</p>
+        <button
+          className="btn secondary"
+          onClick={refreshUsage}
+          disabled={
+            usageBusy ||
+            !!data.active ||
+            !data.authReady ||
+            data.dryRun ||
+            !data.vmRunner?.online ||
+            !data.vmRunner?.supportsUsage
+          }
+        >
+          {usageBusy || data.active ? 'Waiting for runner…' : 'Refresh allowance'}
+        </button>
+        {usageError && <p role="alert">{usageError}</p>}
+        {data.usage?.error && (
+          <p role="status">
+            Allowance could not be read. Try again later; this does not mean your login expired.
+          </p>
+        )}
+        {data.usage?.buckets?.map((b) => (
+          <div key={b.id}>
+            <strong>{b.id}</strong>
+            {['primary', 'secondary'].map(
+              (k) =>
+                b[k] && (
+                  <p key={k}>
+                    {b[k].windowDurationMins >= 1440
+                      ? `${b[k].windowDurationMins / 1440}-day`
+                      : `${b[k].windowDurationMins / 60}-hour`}{' '}
+                    window: <strong>{Math.max(0, 100 - b[k].usedPercent)}% remaining</strong> ·
+                    Resets {format(b[k].resetsAt * 1000)} IST
+                  </p>
+                ),
+            )}
+          </div>
+        ))}
+        <p>
+          {data.usage?.checkedAt
+            ? `Last checked: ${format(data.usage.checkedAt)} IST. Snapshot only; usage may have changed.`
+            : 'Not checked yet. Connect Codex and refresh to read the account on your VM.'}
+        </p>
       </div>
       <div className="settings-guide">
         <h3>Connect or reconnect Codex</h3>

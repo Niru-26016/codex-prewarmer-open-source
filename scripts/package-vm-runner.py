@@ -48,7 +48,7 @@ with tarfile.open(vendor / lock['node']['filename']) as archive:
 with tarfile.open(vendor / lock['codex']['filename']) as archive:
     for name in ['bin/codex', 'bin/codex-code-mode-host', 'codex-resources/bwrap', 'codex-path/rg']:
         put('vendor/' + name, archive.extractfile('package/vendor/x86_64-unknown-linux-musl/' + name), True)
-for name in ['scripts/runner.mjs', 'scripts/vm-runner.mjs', 'scripts/private-config.mjs', 'src/security.js', 'infra/codex-prewarmer.service']:
+for name in ['scripts/runner.mjs', 'scripts/limits.mjs', 'src/limits.js', 'scripts/vm-runner.mjs', 'scripts/private-config.mjs', 'src/security.js', 'infra/codex-prewarmer.service']:
     with (repo / name).open('rb') as source:
         put(name, source)
 (payload / 'package.json').write_text('{"name":"codex-prewarmer-vm-runner","private":true,"type":"module"}\n')

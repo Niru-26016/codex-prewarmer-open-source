@@ -5,8 +5,20 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
+import { readLimits } from './limits.mjs';
 import { readJson } from '../src/security.js';
 
+export function classifyFailure(text) {
+  if (
+    /refresh_token_reused|invalid_grant|refresh token.*(?:expired|revoked)|authentication required|please (?:log|sign) in|401 Unauthorized/i.test(
+      text,
+    )
+  )
+    return { ok: false, reconnect: true, error: 'CODEX_RECONNECT_REQUIRED' };
+  if (/usage limit|rate.?limit|quota exceeded|429/i.test(text))
+    return { ok: false, reconnect: false, error: 'RATE_LIMITED' };
+  return { ok: false, reconnect: false, error: 'EXECUTION_FAILED' };
+}
 export async function runCodex(home) {
   return new Promise((resolve) => {
     const env = { PATH: process.env.PATH, HOME: home, CODEX_HOME: home, LANG: 'C.UTF-8' };
@@ -26,12 +38,15 @@ export async function runCodex(home) {
       ],
       { cwd: home, env, stdio: ['ignore', 'pipe', 'pipe'], detached: process.platform !== 'win32' },
     );
+    let stderr = '';
     let stdout = '',
       killed = false;
     child.stdout.on('data', (d) => {
       stdout = (stdout + d.toString()).slice(-4000);
     });
-    child.stderr.on('data', () => {});
+    child.stderr.on('data', (d) => {
+      stderr = (stderr + d.toString()).slice(-8000);
+    });
     const timer = setTimeout(() => {
       killed = true;
       try {
@@ -41,11 +56,17 @@ export async function runCodex(home) {
     }, 120_000);
     child.on('error', () => {
       clearTimeout(timer);
-      resolve({ ok: false, reconnect: true });
+      resolve({ ok: false, reconnect: false, error: 'EXECUTION_FAILED' });
     });
     child.on('close', (code) => {
       clearTimeout(timer);
-      resolve({ ok: code === 0 && !killed && /\bOK\b/.test(stdout), reconnect: code !== 0 });
+      resolve(
+        code === 0 && !killed && /\bOK\b/.test(stdout)
+          ? { ok: true, reconnect: false }
+          : killed
+            ? { ok: false, reconnect: false, error: 'EXECUTION_TIMEOUT' }
+            : classifyFailure(stderr),
+      );
     });
   });
 }
@@ -68,7 +89,12 @@ function workerOrigin(env) {
     return null;
   return url.origin;
 }
-export async function runRunner({ env = process.env, fetcher = fetch, execute = runCodex } = {}) {
+export async function runRunner({
+  env = process.env,
+  fetcher = fetch,
+  execute = runCodex,
+  query = readLimits,
+} = {}) {
   const origin = workerOrigin(env);
   if (!origin || !/^[0-9a-f-]{36}$/i.test(env.JOB_ID ?? ''))
     return { ok: false, code: 'INVALID_CONFIG' };
@@ -100,7 +126,7 @@ export async function runRunner({ env = process.env, fetcher = fetch, execute = 
       home = await mkdtemp(join(tmpdir(), 'codex-prewarm-'));
       await writeFile(join(home, 'auth.json'), JSON.stringify(claim.authJson), { mode: 0o600 });
       try {
-        result = await execute(home);
+        result = await (claim.usageOnly ? query(home) : execute(home));
       } finally {
         try {
           authJson = JSON.parse(await readFile(join(home, 'auth.json'), 'utf8'));
@@ -136,7 +162,10 @@ export async function pollVm({ env = process.env, fetcher = fetch, runner = runR
       redirect: 'error',
       signal: AbortSignal.timeout(15000),
       headers: { Authorization: `Bearer ${env.RUNNER_TOKEN}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ allowLive: env.ALLOW_CODEX_EXECUTION === 'true' }),
+      body: JSON.stringify({
+        allowLive: env.ALLOW_CODEX_EXECUTION === 'true',
+        supportsUsage: true,
+      }),
     });
     if (!response.ok)
       return {

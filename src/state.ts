@@ -1,3 +1,4 @@
+import { sanitizeLimits } from './limits.js';
 import { DurableObject } from 'cloudflare:workers';
 import { assertSchedule, nextOccurrence } from './schedule.js';
 import { dispatchJob, DispatchError } from './executors.js';
@@ -107,8 +108,13 @@ export class PrewarmState extends DurableObject<AppEnv> {
         active = this.db.active(),
         credential = this.db.credential();
       const next = schedules.flatMap((s) => (s.enabled && s.nextAt ? [s.nextAt] : []));
-      const desktop = this.db.get<{ lastSeen: number; allowLive: boolean }>('vmRunner');
+      const desktop = this.db.get<{
+        lastSeen: number;
+        allowLive: boolean;
+        supportsUsage?: boolean;
+      }>('vmRunner');
       return {
+        usage: this.db.get('usage') ?? null,
         timezone: 'Asia/Kolkata',
         serverNow: now,
         dryRun: this.isDryRun(),
@@ -122,6 +128,7 @@ export class PrewarmState extends DurableObject<AppEnv> {
                 lastSeen: desktop?.lastSeen ?? null,
                 online: Boolean(desktop && now - desktop.lastSeen < 45_000),
                 liveAllowed: desktop?.allowLive ?? false,
+                supportsUsage: desktop?.supportsUsage ?? false,
               }
             : null,
         schedules,
@@ -212,6 +219,7 @@ export class PrewarmState extends DurableObject<AppEnv> {
       validateAuthJson(payload);
       const c = this.db.credential(),
         blob = await encryptJson(this.env.AUTH_ENCRYPTION_KEY, payload);
+      this.db.put('usage', null);
       this.db.put('credential', { version: c.version + 1, state: 'ready', blob });
       return { ok: true };
     });
@@ -220,6 +228,7 @@ export class PrewarmState extends DurableObject<AppEnv> {
     return this.exclusive(async () => {
       if (this.db.active()) throw new AppError('RUN_ACTIVE', 409);
       const c = this.db.credential();
+      this.db.put('usage', null);
       this.db.put('credential', { version: c.version + 1, state: 'disconnected', blob: null });
       return { ok: true };
     });
@@ -273,14 +282,23 @@ export class PrewarmState extends DurableObject<AppEnv> {
     this.db.sql('INSERT INTO dedupe VALUES (?, ?, ?)', key, j.id, now + 8 * DAY);
     return j;
   }
-  async createJob(key: string) {
+  async createUsageJob(key: string) {
+    return this.createJob(key, true);
+  }
+  async createJob(key: string, usageOnly = false) {
     return this.exclusive(async () => {
       const now = Date.now();
       let j: Job;
       this.db.transaction(() => {
         this.expire(now);
         this.db.prune(now);
-        j = this.enqueue(`manual:${key}`, 'manual', null, null, now);
+        j = this.enqueue(
+          `${usageOnly ? 'usage' : 'manual'}:${key}`,
+          usageOnly ? 'usage' : 'manual',
+          null,
+          null,
+          now,
+        );
       });
       await this.rearm();
       return { ok: true, job: this.publicJob(j!) };
@@ -398,17 +416,18 @@ export class PrewarmState extends DurableObject<AppEnv> {
     });
   }
   /** VM discovery returns an exact job ID. Credentials still require its single-use claim. */
-  async vmPoll(allowLive: boolean) {
+  async vmPoll(allowLive: boolean, supportsUsage = false) {
     return this.exclusive(async () => {
       if (this.env.EXECUTOR !== 'vm') throw new AppError('VM_RUNNER_DISABLED', 403);
       const now = Date.now();
       this.expire(now);
-      this.db.put('vmRunner', { lastSeen: now, allowLive });
+      this.db.put('vmRunner', { lastSeen: now, allowLive, supportsUsage });
       const j = this.db.active();
       const available =
         j &&
         j.executor === 'vm' &&
         j.status === 'dispatched' &&
+        (j.source !== 'usage' || supportsUsage) &&
         (j.dryRun || (!this.isDryRun() && allowLive));
       await this.rearm();
       return { ok: true, jobId: available ? j.id : null };
@@ -434,13 +453,19 @@ export class PrewarmState extends DurableObject<AppEnv> {
         claimHash: await hash(claimToken),
       });
       await this.rearm();
-      return { ok: true, dryRun: j.dryRun, authJson };
+      return { ok: true, dryRun: j.dryRun, authJson, usageOnly: j.source === 'usage' };
     });
   }
   async finish(
     jobId: string,
     claimToken: string,
-    data: { ok: boolean; authJson?: AuthJson | null; error?: string; reconnect?: boolean },
+    data: {
+      ok: boolean;
+      authJson?: AuthJson | null;
+      error?: string;
+      reconnect?: boolean;
+      limits?: unknown;
+    },
   ) {
     return this.exclusive(async () => {
       this.expire(Date.now());
@@ -472,10 +497,33 @@ export class PrewarmState extends DurableObject<AppEnv> {
             state: data.reconnect ? 'reconnect_required' : 'ready',
             blob,
           });
+        if (j.source === 'usage')
+          this.db.put('usage', {
+            checkedAt: Date.now(),
+            buckets: sanitizeLimits({
+              rateLimitsByLimitId: Object.fromEntries(
+                (Array.isArray(data.limits) ? data.limits : [])
+                  .filter(
+                    (b): b is { id: string } =>
+                      !!b && typeof b === 'object' && 'id' in b && typeof b.id === 'string',
+                  )
+                  .map((b) => [b.id, b]),
+              ),
+            }),
+            error: ok ? null : 'USAGE_UNAVAILABLE',
+          });
         this.db.saveJob({
           ...j,
           status: ok ? 'succeeded' : 'failed',
-          error: ok ? null : data.reconnect ? 'CODEX_RECONNECT_REQUIRED' : 'EXECUTION_FAILED',
+          error: ok
+            ? null
+            : data.reconnect
+              ? 'CODEX_RECONNECT_REQUIRED'
+              : ['RATE_LIMITED', 'EXECUTION_TIMEOUT', 'USAGE_UNAVAILABLE'].includes(
+                    data.error ?? '',
+                  )
+                ? data.error!
+                : 'EXECUTION_FAILED',
           finishedAt: Date.now(),
           receipt,
         });
